@@ -8,7 +8,7 @@
 
 <meta name="author" content="Thom Benjamin Volker">
 
-<title>A very simple GAN</title>
+<title>Some simple GANs in R</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -68,6 +68,14 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <script src="minigan_complete_data_files/libs/bootstrap/bootstrap.min.js"></script>
 <link href="minigan_complete_data_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
 <link href="minigan_complete_data_files/libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<script src="minigan_complete_data_files/libs/htmlwidgets-1.6.4/htmlwidgets.js"></script>
+
+<script src="minigan_complete_data_files/libs/viz-1.8.2/viz.js"></script>
+
+<link href="minigan_complete_data_files/libs/DiagrammeR-styles-0.2/styles.css" rel="stylesheet">
+
+<script src="minigan_complete_data_files/libs/grViz-binding-1.0.11/grViz.js"></script>
+
 
   <script src="https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6"></script>
   <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
@@ -109,7 +117,7 @@ window.Quarto = {
 
 <header id="title-block-header" class="quarto-title-block default">
 <div class="quarto-title">
-<h1 class="title">A very simple GAN</h1>
+<h1 class="title">Some simple GANs in R</h1>
 </div>
 
 
@@ -132,6 +140,15 @@ window.Quarto = {
 </header>
 
 
+<p>Generative adversarial networks (GANs) are a class of machine learning models that can be used to generate synthetic data. To do this, it transforms random noise into data that is similar to the training data. GANs consist of two neural networks: a generator and a discriminator. The generator takes random noise as input and transforms it into synthetic data, while the discriminator tries to distinguish between real and synthetic data. The two networks are trained simultaneously, in a zero-sum game: if the generator generates more realistic synthetic data, the discriminator has more difficulty distinguishing between the real and synthetic data.</p>
+<div class="cell">
+<div class="cell-output-display">
+<div class="grViz html-widget html-fill-item" id="htmlwidget-0b285fd72db95738380e" style="width:100%;height:464px;"></div>
+<script type="application/json" data-for="htmlwidget-0b285fd72db95738380e">{"x":{"diagram":"digraph {\n  graph [layour = dot, rankdir = LR]\n  \n  node [shape = rectangle, style = filled, fillcolor = lightblue]\n  N1 [label = \"Random noise\"]\n  N2 [label = \"Generator\"]\n  N3 [label = \"Synthetic data\"]\n  N4 [label = \"Discriminator\"]\n\n  N1 -> N2 -> N3 -> N4 -> N2\n}","config":{"engine":"dot","options":null}},"evals":[],"jsHooks":[]}</script>
+</div>
+</div>
+<section id="simple-univariate-gans" class="level1">
+<h1>Simple univariate GANs</h1>
 <p>Let’s create a GAN using <code>keras</code> and <code>tensorflow</code> in <code>R</code>. We will use a very simple dataset, consisting of only a single variable that is normally distributed with mean <span class="math inline">\(\mu = 2\)</span> and standard deviation <span class="math inline">\(\sigma = 4\)</span>. The generator will be a simple linear model, and the discriminator will be a simple feedforward neural network with a single hidden layer.</p>
 <section id="preliminaries" class="level2">
 <h2 class="anchored" data-anchor-id="preliminaries">Preliminaries</h2>
@@ -149,16 +166,17 @@ Attaching package: 'tensorflow'</code></pre>
     set_random_seed, shape</code></pre>
 </div>
 <div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">123</span>)</span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>N <span class="ot">&lt;-</span> <span class="dv">1000</span></span>
-<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>train_dat <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">rnorm</span>(N, <span class="dv">2</span>, <span class="dv">4</span>))</span>
-<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a><span class="fu">plot</span>(<span class="fu">density</span>(train_dat))</span>
-<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="fu">curve</span>(<span class="fu">dnorm</span>(x, <span class="dv">2</span>, <span class="dv">4</span>), <span class="at">add =</span> <span class="cn">TRUE</span>, <span class="at">lty =</span> <span class="dv">2</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="fu">set_random_seed</span>(<span class="dv">123</span>)</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>N <span class="ot">&lt;-</span> <span class="dv">1000</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>train_dat <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="fu">rnorm</span>(N, <span class="dv">2</span>, <span class="dv">4</span>))</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="fu">plot</span>(<span class="fu">density</span>(train_dat))</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a><span class="fu">curve</span>(<span class="fu">dnorm</span>(x, <span class="dv">2</span>, <span class="dv">4</span>), <span class="at">add =</span> <span class="cn">TRUE</span>, <span class="at">lty =</span> <span class="dv">2</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="minigan_complete_data_files/figure-html/unnamed-chunk-1-1.png" class="img-fluid figure-img" width="672"></p>
+<p><img src="minigan_complete_data_files/figure-html/unnamed-chunk-2-1.png" class="img-fluid figure-img" width="672"></p>
 </figure>
 </div>
 </div>
@@ -329,7 +347,7 @@ Attaching package: 'tensorflow'</code></pre>
 <span id="cb10-26"><a href="#cb10-26" aria-hidden="true" tabindex="-1"></a><span class="fu">curve</span>(<span class="fu">dnorm</span>(x, <span class="dv">2</span>, <span class="dv">4</span>), <span class="at">add =</span> <span class="cn">TRUE</span>)</span>
 <span id="cb10-27"><a href="#cb10-27" aria-hidden="true" tabindex="-1"></a><span class="fu">curve</span>(<span class="fu">dnorm</span>(x, <span class="dv">0</span>, <span class="dv">1</span>), <span class="at">add =</span> <span class="cn">TRUE</span>, <span class="at">col =</span> <span class="st">"black"</span>, <span class="at">lty=</span><span class="dv">2</span>)</span>
 <span id="cb10-28"><a href="#cb10-28" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb10-29"><a href="#cb10-29" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (i <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span><span class="dv">10</span>) {</span>
+<span id="cb10-29"><a href="#cb10-29" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (i <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span><span class="dv">5</span>) {</span>
 <span id="cb10-30"><a href="#cb10-30" aria-hidden="true" tabindex="-1"></a>  mod <span class="sc">|&gt;</span></span>
 <span id="cb10-31"><a href="#cb10-31" aria-hidden="true" tabindex="-1"></a>    <span class="fu">fit</span>(train_dat, <span class="at">epochs =</span> <span class="dv">30</span>, <span class="at">batch_size =</span> <span class="dv">32</span>, <span class="at">verbose =</span> <span class="dv">0</span>)</span>
 <span id="cb10-32"><a href="#cb10-32" aria-hidden="true" tabindex="-1"></a>  newdat <span class="ot">&lt;-</span> mod<span class="sc">$</span><span class="fu">generator</span>(tf<span class="sc">$</span>random<span class="sc">$</span><span class="fu">normal</span>(<span class="at">shape =</span> <span class="fu">c</span>(nsyn, latent_dim)))</span>
@@ -339,7 +357,120 @@ Attaching package: 'tensorflow'</code></pre>
 <div class="cell-output-display">
 <div>
 <figure class="figure">
-<p><img src="minigan_complete_data_files/figure-html/unnamed-chunk-5-1.png" class="img-fluid figure-img" width="672"></p>
+<p><img src="minigan_complete_data_files/figure-html/unnamed-chunk-6-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+</div>
+<p>The figure shows the density of the training data (orange), the true data generating distribution (black line), the distribution of the random input vectors (black dashed line), and the generated data after 30, 60, 90, 120 and 150 epochs of training (green lines). The generator comes increasingly close to the true data generating distribution.</p>
+</section>
+</section>
+<section id="a-normal-mixture-gan" class="level2">
+<h2 class="anchored" data-anchor-id="a-normal-mixture-gan">A normal mixture GAN</h2>
+<p>In this example, we will use a more complex data generating distribution. We will use a mixture of two normal distributions with means <span class="math inline">\(\mu_1 = 2\)</span> and <span class="math inline">\(\mu_2 = 8\)</span>, and standard deviations <span class="math inline">\(\sigma_1 = 1\)</span> and <span class="math inline">\(\sigma_2 = 2\)</span>. The data generating distribution is then given by <span class="math display">\[
+f(x) = 0.5 \cdot \mathcal{N}(x; 2, 1) + 0.5 \cdot \mathcal{N}(x; 8, 2).
+\]</span></p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb11"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>mixture <span class="ot">&lt;-</span> <span class="fu">rbinom</span>(N, <span class="dv">1</span>, <span class="fl">0.5</span>)</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>train_dat <span class="ot">&lt;-</span> <span class="fu">matrix</span>(mixture <span class="sc">*</span> <span class="fu">rnorm</span>(N, <span class="dv">2</span>, <span class="dv">1</span>) <span class="sc">+</span> (<span class="dv">1</span> <span class="sc">-</span> mixture) <span class="sc">*</span> <span class="fu">rnorm</span>(N, <span class="dv">8</span>, <span class="dv">2</span>))</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a><span class="fu">plot</span>(<span class="fu">density</span>(train_dat), <span class="at">ylim =</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="fl">0.2</span>))</span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a><span class="fu">curve</span>(<span class="fl">0.5</span> <span class="sc">*</span> <span class="fu">dnorm</span>(x, <span class="dv">2</span>, <span class="dv">1</span>) <span class="sc">+</span> <span class="fl">0.5</span> <span class="sc">*</span> <span class="fu">dnorm</span>(x, <span class="dv">8</span>, <span class="dv">2</span>), <span class="at">add =</span> <span class="cn">TRUE</span>, <span class="at">lty =</span> <span class="dv">2</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="minigan_complete_data_files/figure-html/unnamed-chunk-7-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+</div>
+<p>We can now train the GAN on this data generating distribution. We slightly change the generator and discriminator architectures to allow for a more complex data generating distribution. We also increase the number of epochs to 500.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb12"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>generator <span class="ot">&lt;-</span> <span class="cf">function</span>(<span class="at">latent_dim =</span> <span class="dv">1</span>) {</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>  model <span class="ot">&lt;-</span> <span class="fu">keras_model_sequential</span>(<span class="at">input_shape =</span> latent_dim, <span class="at">name =</span> <span class="st">"seq_gen"</span>) <span class="sc">|&gt;</span> </span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>    <span class="fu">layer_dense</span>(<span class="at">units =</span> <span class="dv">16</span>, <span class="at">activation =</span> <span class="st">"relu"</span>) <span class="sc">|&gt;</span></span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>    <span class="fu">layer_dense</span>(<span class="at">units =</span> <span class="dv">1</span>, <span class="at">activation =</span> <span class="st">"linear"</span>)</span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a><span class="fu">summary</span>(<span class="fu">generator</span>())</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Model: "seq_gen"
+┌───────────────────────────────────┬──────────────────────────┬───────────────
+│ Layer (type)                      │ Output Shape             │       Param # 
+├───────────────────────────────────┼──────────────────────────┼───────────────
+│ dense_6 (Dense)                   │ (None, 16)               │            32 
+├───────────────────────────────────┼──────────────────────────┼───────────────
+│ dense_7 (Dense)                   │ (None, 1)                │            17 
+└───────────────────────────────────┴──────────────────────────┴───────────────
+ Total params: 49 (196.00 B)
+ Trainable params: 49 (196.00 B)
+ Non-trainable params: 0 (0.00 B)</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb14"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>discriminator <span class="ot">&lt;-</span> <span class="cf">function</span>(<span class="at">dim =</span> <span class="dv">1</span>) {</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>  model <span class="ot">&lt;-</span> <span class="fu">keras_model_sequential</span>(<span class="at">input_shape =</span> dim, <span class="at">name =</span> <span class="st">"seq_disc"</span>) <span class="sc">|&gt;</span> </span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>    <span class="fu">layer_dense</span>(<span class="at">units =</span> <span class="dv">32</span>, <span class="at">activation =</span> <span class="st">"relu"</span>) <span class="sc">|&gt;</span></span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>    <span class="fu">layer_dense</span>(<span class="at">units =</span> <span class="dv">16</span>, <span class="at">activation =</span> <span class="st">"relu"</span>) <span class="sc">|&gt;</span></span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>    <span class="fu">layer_dense</span>(<span class="at">units =</span> <span class="dv">1</span>, <span class="at">activation =</span> <span class="st">"sigmoid"</span>)</span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a><span class="fu">summary</span>(<span class="fu">discriminator</span>())</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Model: "seq_disc"
+┌───────────────────────────────────┬──────────────────────────┬───────────────
+│ Layer (type)                      │ Output Shape             │       Param # 
+├───────────────────────────────────┼──────────────────────────┼───────────────
+│ dense_8 (Dense)                   │ (None, 32)               │            64 
+├───────────────────────────────────┼──────────────────────────┼───────────────
+│ dense_9 (Dense)                   │ (None, 16)               │           528 
+├───────────────────────────────────┼──────────────────────────┼───────────────
+│ dense_10 (Dense)                  │ (None, 1)                │            17 
+└───────────────────────────────────┴──────────────────────────┴───────────────
+ Total params: 609 (2.38 KB)
+ Trainable params: 609 (2.38 KB)
+ Non-trainable params: 0 (0.00 B)</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb16"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>latent_dim <span class="ot">&lt;-</span> <span class="fu">as.integer</span>(<span class="dv">1</span>)</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>nsyn <span class="ot">&lt;-</span> <span class="fu">nrow</span>(train_dat)</span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>mod <span class="ot">&lt;-</span> <span class="fu">gan</span>(</span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>  <span class="at">discriminator =</span> <span class="fu">discriminator</span>(<span class="at">dim =</span> <span class="fu">ncol</span>(train_dat)), </span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a>  <span class="at">generator =</span> <span class="fu">generator</span>(<span class="at">latent_dim =</span> latent_dim), </span>
+<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a>  <span class="at">latent_dim =</span> latent_dim</span>
+<span id="cb16-8"><a href="#cb16-8" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb16-9"><a href="#cb16-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-10"><a href="#cb16-10" aria-hidden="true" tabindex="-1"></a>mod <span class="sc">|&gt;</span></span>
+<span id="cb16-11"><a href="#cb16-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">compile</span>(</span>
+<span id="cb16-12"><a href="#cb16-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">d_optimizer =</span> <span class="fu">optimizer_adam</span>(<span class="at">beta_1 =</span> <span class="fl">0.5</span>),</span>
+<span id="cb16-13"><a href="#cb16-13" aria-hidden="true" tabindex="-1"></a>    <span class="at">g_optimizer =</span> <span class="fu">optimizer_adam</span>(<span class="at">beta_1 =</span> <span class="fl">0.5</span>),</span>
+<span id="cb16-14"><a href="#cb16-14" aria-hidden="true" tabindex="-1"></a>    <span class="at">loss_fn =</span> <span class="fu">loss_binary_crossentropy</span>()</span>
+<span id="cb16-15"><a href="#cb16-15" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb16-16"><a href="#cb16-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-17"><a href="#cb16-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-18"><a href="#cb16-18" aria-hidden="true" tabindex="-1"></a><span class="fu">plot</span>(</span>
+<span id="cb16-19"><a href="#cb16-19" aria-hidden="true" tabindex="-1"></a>  <span class="fu">density</span>(train_dat), </span>
+<span id="cb16-20"><a href="#cb16-20" aria-hidden="true" tabindex="-1"></a>  <span class="at">ylim =</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="fl">0.2</span>), </span>
+<span id="cb16-21"><a href="#cb16-21" aria-hidden="true" tabindex="-1"></a>  <span class="at">col =</span> <span class="st">"darkorange2"</span>,</span>
+<span id="cb16-22"><a href="#cb16-22" aria-hidden="true" tabindex="-1"></a>  <span class="at">xlab =</span> <span class="st">"x"</span>,</span>
+<span id="cb16-23"><a href="#cb16-23" aria-hidden="true" tabindex="-1"></a>  <span class="at">main =</span> <span class="st">"GAN Training"</span></span>
+<span id="cb16-24"><a href="#cb16-24" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb16-25"><a href="#cb16-25" aria-hidden="true" tabindex="-1"></a><span class="fu">curve</span>(<span class="fl">0.5</span> <span class="sc">*</span> <span class="fu">dnorm</span>(x, <span class="dv">2</span>, <span class="dv">1</span>) <span class="sc">+</span> <span class="fl">0.5</span> <span class="sc">*</span> <span class="fu">dnorm</span>(x, <span class="dv">8</span>, <span class="dv">2</span>), <span class="at">add =</span> <span class="cn">TRUE</span>, <span class="at">lty =</span> <span class="dv">2</span>)</span>
+<span id="cb16-26"><a href="#cb16-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-27"><a href="#cb16-27" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-28"><a href="#cb16-28" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (i <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span><span class="dv">5</span>) {</span>
+<span id="cb16-29"><a href="#cb16-29" aria-hidden="true" tabindex="-1"></a>  mod <span class="sc">|&gt;</span></span>
+<span id="cb16-30"><a href="#cb16-30" aria-hidden="true" tabindex="-1"></a>    <span class="fu">fit</span>(train_dat, <span class="at">epochs =</span> <span class="dv">100</span>, <span class="at">batch_size =</span> <span class="dv">32</span>, <span class="at">verbose =</span> <span class="dv">0</span>)</span>
+<span id="cb16-31"><a href="#cb16-31" aria-hidden="true" tabindex="-1"></a>  newdat <span class="ot">&lt;-</span> mod<span class="sc">$</span><span class="fu">generator</span>(tf<span class="sc">$</span>random<span class="sc">$</span><span class="fu">normal</span>(<span class="at">shape =</span> <span class="fu">c</span>(nsyn, latent_dim)))</span>
+<span id="cb16-32"><a href="#cb16-32" aria-hidden="true" tabindex="-1"></a>  <span class="fu">lines</span>(<span class="fu">density</span>(<span class="fu">as.matrix</span>(newdat)), </span>
+<span id="cb16-33"><a href="#cb16-33" aria-hidden="true" tabindex="-1"></a>        <span class="at">col =</span> RColorBrewer<span class="sc">::</span><span class="fu">brewer.pal</span>(<span class="dv">6</span>, <span class="st">"Greens"</span>)[i])</span>
+<span id="cb16-34"><a href="#cb16-34" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="minigan_complete_data_files/figure-html/unnamed-chunk-10-1.png" class="img-fluid figure-img" width="672"></p>
 </figure>
 </div>
 </div>

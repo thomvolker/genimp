@@ -1,8 +1,30 @@
 ---
-title: "A very simple GAN"
+title: "Some simple GANs in R"
 author: "Thom Benjamin Volker"
 format: html
 ---
+
+Generative adversarial networks (GANs) are a class of machine learning models that can be used to generate synthetic data. To do this, it transforms random noise into data that is similar to the training data. GANs consist of two neural networks: a generator and a discriminator. The generator takes random noise as input and transforms it into synthetic data, while the discriminator tries to distinguish between real and synthetic data. The two networks are trained simultaneously, in a zero-sum game: if the generator generates more realistic synthetic data, the discriminator has more difficulty distinguishing between the real and synthetic data.
+
+```{r}
+#| echo: false
+# create graph for GAN with graphviz
+DiagrammeR::grViz("digraph {
+  graph [layour = dot, rankdir = LR]
+  
+  node [shape = rectangle, style = filled, fillcolor = lightblue]
+  N1 [label = 'Random noise']
+  N2 [label = 'Generator']
+  N3 [label = 'Synthetic data']
+  N4 [label = 'Discriminator']
+
+  N1 -> N2 -> N3 -> N4 -> N2
+}")
+```
+
+
+
+# Simple univariate GANs
 
 Let's create a GAN using `keras` and `tensorflow` in `R`. We will use a very simple dataset, consisting of only a single variable that is normally distributed with mean $\mu = 2$ and standard deviation $\sigma = 4$. The generator will be a simple linear model, and the discriminator will be a simple feedforward neural network with a single hidden layer.
 
@@ -17,6 +39,7 @@ library(keras3)
 library(tensorflow)
 
 set.seed(123)
+set_random_seed(123)
 
 N <- 1000
 train_dat <- matrix(rnorm(N, 2, 4))
@@ -173,7 +196,7 @@ plot(
 curve(dnorm(x, 2, 4), add = TRUE)
 curve(dnorm(x, 0, 1), add = TRUE, col = "black", lty=2)
 
-for (i in 1:10) {
+for (i in 1:5) {
   mod |>
     fit(train_dat, epochs = 30, batch_size = 32, verbose = 0)
   newdat <- mod$generator(tf$random$normal(shape = c(nsyn, latent_dim)))
@@ -182,3 +205,87 @@ for (i in 1:10) {
 }
 
 ```
+
+The figure shows the density of the training data (orange), the true data generating distribution (black line), the distribution of the random input vectors (black dashed line), and the generated data after 30, 60, 90, 120 and 150 epochs of training (green lines). The generator comes increasingly close to the true data generating distribution.
+
+
+## A normal mixture GAN
+
+In this example, we will use a more complex data generating distribution. We will use a mixture of two normal distributions with means $\mu_1 = 2$ and $\mu_2 = 8$, and standard deviations $\sigma_1 = 1$ and $\sigma_2 = 2$. The data generating distribution is then given by
+$$
+f(x) = 0.5 \cdot \mathcal{N}(x; 2, 1) + 0.5 \cdot \mathcal{N}(x; 8, 2).
+$$
+
+```{r}
+mixture <- rbinom(N, 1, 0.5)
+train_dat <- matrix(mixture * rnorm(N, 2, 1) + (1 - mixture) * rnorm(N, 8, 2))
+
+plot(density(train_dat), ylim = c(0, 0.2))
+curve(0.5 * dnorm(x, 2, 1) + 0.5 * dnorm(x, 8, 2), add = TRUE, lty = 2)
+```
+
+We can now train the GAN on this data generating distribution. We slightly change the generator and discriminator architectures to allow for a more complex data generating distribution. We also increase the number of epochs to 500.
+
+```{r}
+generator <- function(latent_dim = 1) {
+  model <- keras_model_sequential(input_shape = latent_dim, name = "seq_gen") |> 
+    layer_dense(units = 16, activation = "relu") |>
+    layer_dense(units = 1, activation = "linear")
+}
+
+summary(generator())
+```
+
+```{r}
+discriminator <- function(dim = 1) {
+  model <- keras_model_sequential(input_shape = dim, name = "seq_disc") |> 
+    layer_dense(units = 32, activation = "relu") |>
+    layer_dense(units = 16, activation = "relu") |>
+    layer_dense(units = 1, activation = "sigmoid")
+}
+
+summary(discriminator())
+```
+
+```{r}
+latent_dim <- as.integer(1)
+nsyn <- nrow(train_dat)
+
+mod <- gan(
+  discriminator = discriminator(dim = ncol(train_dat)), 
+  generator = generator(latent_dim = latent_dim), 
+  latent_dim = latent_dim
+)
+
+mod |>
+  compile(
+    d_optimizer = optimizer_adam(beta_1 = 0.5),
+    g_optimizer = optimizer_adam(beta_1 = 0.5),
+    loss_fn = loss_binary_crossentropy()
+  )
+
+
+plot(
+  density(train_dat), 
+  ylim = c(0, 0.2), 
+  col = "darkorange2",
+  xlab = "x",
+  main = "GAN Training"
+)
+curve(0.5 * dnorm(x, 2, 1) + 0.5 * dnorm(x, 8, 2), add = TRUE, lty = 2)
+
+
+for (i in 1:5) {
+  mod |>
+    fit(train_dat, epochs = 100, batch_size = 32, verbose = 0)
+  newdat <- mod$generator(tf$random$normal(shape = c(nsyn, latent_dim)))
+  lines(density(as.matrix(newdat)), 
+        col = RColorBrewer::brewer.pal(6, "Greens")[i])
+}
+```
+
+
+
+
+
+

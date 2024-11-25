@@ -3,9 +3,9 @@ title: "mice trial"
 author: "Laura"
 date: "2024-11-20"
 output:
-  pdf_document: default
   html_document:
     df_print: paged
+  pdf_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -315,5 +315,5 @@ mask_rmse <- ifelse(is.na(mask), 0, 1)  # Convert NA to 0, keeping valid entries
 rmse <- rmse_loss(norms, imputed_data, mask_rmse)
 print(paste("RMSE:", rmse))
 ```
-The RMSE obtained using the same data set with the same mask, which has been extracted from GAIN, is now 0.11, compared to 0.053. So the difference stayed around the same. This is not completely reproduceable because every time the GAIN script is run the mask is being randomly obtained, but for this example we had the same mask. It is also questionable whether comparing the RMSE's is the best way to compare the two methods of imputing missing data. 
+The RMSE obtained using the same data set with the same mask, which has been extracted from GAIN, is now 0.011, compared to 0.053. So the difference stayed around the same. This is not completely reproduceable because every time the GAIN script is run the mask is being randomly obtained, but for this example we had the same mask. It is also questionable whether comparing the RMSE's is the best way to compare the two methods of imputing missing data. 
 

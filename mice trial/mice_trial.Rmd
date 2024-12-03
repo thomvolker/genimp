@@ -317,3 +317,15 @@ print(paste("RMSE:", rmse))
 ```
 The RMSE obtained using the same data set with the same mask, which has been extracted from GAIN, is now 0.011, compared to 0.053. So the difference stayed around the same. This is not completely reproduceable because every time the GAIN script is run the mask is being randomly obtained, but for this example we had the same mask. It is also questionable whether comparing the RMSE's is the best way to compare the two methods of imputing missing data. 
 
+## Mice with boys data
+
+```{r}
+#load data 
+boys <- mice::boys
+View(boys)
+
+#boys also has categorical vairbales... different from spam so that is obv a challenge, also when it comes to the gain 
+```
+
+
+

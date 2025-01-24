@@ -1,0 +1,56 @@
+---
+title: "Generate Data"
+author: "laura"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+```{r, echo=FALSE}
+#load packages
+library(dplyr)
+library(MASS)
+```
+
+
+To see how well the RGAIN performs in imputing missing data, I will first generate some simple data that is continous. This data is generated using the mvrnorm function from the package MASS obtaining a multivariate normal dataset. This data set has 6 variables, where the correlations between those variables are defined in `popcor`. 
+
+```{r}
+set.seed(11)
+
+popcor <- matrix(nrow = 4, ncol = 4,
+                 c(1, 0.5, 0.3, 0.1,
+                   0.5, 1, 0.5, 0.3,
+                   0.3, 0.5, 1, 0.5,
+                   0.1, 0.3, 0.5, 1))
+mu <- c(0, 0, 0, 0)
+n_datasets <- 100
+n_participants <- 2000
+ 
+data <- MASS::mvrnorm(n = n_participants, mu = mu, Sigma = popcor) %>% 
+                       as_tibble() %>% # make into a tibble
+                       rename(x1 = V1, x2 = V2, x3 = V3, x4 = V4) # rename columns
+                       
+```
+
+To save the data frame
+```{r}
+write.csv(data, file = "C:/Users/laura/Documents/GitHub/genimp/RGAIN/gen_data.csv")
+```
+
+Now, to make the data a bit more complex, I also want it to include categorical variabales, so that we can also see how well the R implementation of GAIN does when it comes to categorical variables. 
+```{r}
+#laod packages
+library(holodeck)
+library(purrr)
+
+#create a data set with 4 continuous variables with a correltion of 0.4
+data_2 <- holodeck::sim_covar(n_obs = 2000, n_vars = 4, var = 1, cov = 0.4, name = "x") 
+
+#add 2 columns of discrete variables
+data_2 <- data_2 %>% sim_cat( n_groups = 3, name = "cat1") %>% sim_cat( n_groups = 4, name = "cat2")
+
+# so now i have a mixed data set, but the way the categorical vairables are distributed is way to simple...
+
+```
+
+

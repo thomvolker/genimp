@@ -12,7 +12,7 @@ library(MASS)
 ```
 
 
-To see how well the RGAIN performs in imputing missing data, I will first generate some simple data that is continous. This data is generated using the mvrnorm function from the package MASS obtaining a multivariate normal dataset. This data set has 6 variables, where the correlations between those variables are defined in `popcor`. 
+To see how well the RGAIN performs in imputing missing data, I will first generate some simple data that is continous. This data is generated using the mvrnorm function from the package MASS obtaining a multivariate normal dataset. This data set has 4 variables, where the correlations between those variables are defined in `popcor`. 
 
 ```{r}
 set.seed(11)
@@ -37,7 +37,7 @@ To save the data frame
 write.csv(data, file = "C:/Users/laura/Documents/GitHub/genimp/RGAIN/gen_data.csv")
 ```
 
-Now, to make the data a bit more complex, I also want it to include categorical variabales, so that we can also see how well the R implementation of GAIN does when it comes to categorical variables. 
+Now, to make the data a bit more complex, I also want it to include categorical variables, so that we can also see how well the R implementation of GAIN does when it comes to categorical variables. 
 ```{r}
 #laod packages
 library(holodeck)
@@ -49,8 +49,17 @@ data_2 <- holodeck::sim_covar(n_obs = 2000, n_vars = 4, var = 1, cov = 0.4, name
 #add 2 columns of discrete variables
 data_2 <- data_2 %>% sim_cat( n_groups = 3, name = "cat1") %>% sim_cat( n_groups = 4, name = "cat2")
 
-# so now i have a mixed data set, but the way the categorical vairables are distributed is way to simple...
+# so now i have a mixed data set, but the way the categorical variables are distributed is way to simple...
+
+data_2$cat1 <- sample(c("a", "b", "c"), size = 2000, replace = T, prob = c(0.4, 0.3, .05))
+data_2$cat2 <- sample(c("a", "b", "c", "d"), size = 2000, replace = T, prob = c(0.1, 0.6, 0.2, 0.5))
+
+barplot(prop.table(table(data_2$cat2)))
+barplot(prop.table(table(data_2$cat1)))
+
+write.csv(data_2, file = "C:/Users/laura/Documents/GitHub/genimp/RGAIN/gen_catdata.csv")
 
 ```
 
+Now we have two data sets, one with 4 multivariate normally distributed variables, and one with two extra added categorical variables. 
 

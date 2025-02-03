@@ -433,7 +433,7 @@ main_gain <- function(data, miss_rate = 0.2, batch_size = 128, hint_rate = 0.9, 
   print(plot)
   
   # Return the imputed dataset 
-  return(imputed$data)
+  return(list(imputed_data=imputed$data, mask=mask))
 }
 
 
@@ -444,10 +444,13 @@ Apply the algorithm to the dataset letter, given by the authors of the papers
 ```{r}
 letter <- read.csv("C:/Users/laura/Documents/GitHub/genimp/mice trial/letter.csv")
 
+set.seed(123)
 # Impute missing values in the dataset using the GAIN algorithm
 imputed <- main_gain(letter)
 
-#it took around 5 min to run this for 1000 iterations. The resulting RMSE is 0.171 
+#it took around 5 min to run this for 1000 iterations. The resulting RMSE is 0.180
+
+mask<- imputed$mask
 ```
 
 ### impute generated data
@@ -468,6 +471,10 @@ imputed_gc <- main_gain(c_data)
 ```
 
 ## Imputing Data Mice
+
+```{r}
+
+```
 
 
 

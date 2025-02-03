@@ -80,14 +80,14 @@ library(tensorflow)
 ```
 
 
-```{python}
-#pip install "numpy<2"
+```{r}
+reticulate::use_condaenv("tf-env", required = T)
 
 ```
 
 This chunk contains a set of utility functions that perform essential preprocessing and evaluation tasks for the GAIN algorithm. Below is an overview of their roles:
 
-1. missig: Creates a mask matrix to simulate missing data.
+1. missing: Creates a mask matrix to simulate missing data.
 2. parameters_norm: Computes min-max normalization parameters (minimum and maximum values for each column).
 3. normalization: Normalizes the dataset using min-max scaling to ensure values lie between 0 and 1.
 4. renormalization: Reverses the normalization process to restore the original data scale.
@@ -447,8 +447,27 @@ letter <- read.csv("C:/Users/laura/Documents/GitHub/genimp/mice trial/letter.csv
 # Impute missing values in the dataset using the GAIN algorithm
 imputed <- main_gain(letter)
 
+#it took around 5 min to run this for 1000 iterations. The resulting RMSE is 0.171 
 ```
 
+### impute generated data
+```{r}
+g_data <- read.csv("gen_data.csv")
+imputed_g <- main_gain(g_data)
+
+#RMSE of 0.399
+```
+
+### Imputing generated Data (2) 
+```{r}
+#data with also categorical variables 
+
+c_data <- read.csv("gen_catdata.csv")
+
+imputed_gc <- main_gain(c_data)
+```
+
+## Imputing Data Mice
 
 
 

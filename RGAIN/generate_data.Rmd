@@ -455,11 +455,15 @@ mask<- imputed$mask
 
 ### impute generated data
 ```{r}
+set.seed(123)
 g_data <- read.csv("gen_data.csv")
+
 imputed_g <- main_gain(g_data)
 
-#RMSE of 0.399
+#RMSE of 0.418
+mask_g <- imputed_g$mask
 ```
+RMSE of 0.418
 
 ### Imputing generated Data (2) 
 ```{r}
@@ -472,9 +476,180 @@ imputed_gc <- main_gain(c_data)
 
 ## Imputing Data Mice
 
-```{r}
+impute letter data using mice where most of the code is reused from mice_trial
+
+
+```{r} 
+data <- read.csv("C:/Users/laura/Documents/GitHub/genimp/mice trial/letter.csv")
+
+# MinMax nomalization
+normalization <- function(data, parameters = NULL) {
+  # If no parameters are provided, calculate min and max for each column
+  if (is.null(parameters)) {
+    min_val <- apply(data, 2, min, na.rm = TRUE)
+    max_val <- apply(data, 2, max, na.rm = TRUE)
+    
+    # Normalize data using min-max formula
+    norm_data <- sweep(data, 2, min_val, "-")
+    norm_data <- sweep(norm_data, 2, max_val - min_val, "/")
+    
+    # Return normalized data and the min/max parameters for future renormalization
+    return(list(norm_data = norm_data, parameters = list(min_val = min_val, max_val = max_val)))
+  } else {
+    min_val <- parameters$min_val
+    max_val <- parameters$max_val
+    
+    # Normalize using pre-calculated min and max values
+    norm_data <- sweep(data, 2, min_val, "-")
+    norm_data <- sweep(norm_data, 2, max_val - min_val, "/")
+    
+    return(norm_data)
+  }
+}
+
+norm_ <- normalization(data)
+norm_data <- norm_$norm_data
+parameters <- norm_$parameters  # parameters is a list, containing min_val and max
+
+norms <- normalization(data, parameters)
 
 ```
 
 
+# Introduce missingness
+```{r}
+
+# Introduce missing values by using the same mask generated above
+# Convert 0's in the mask to NA
+mask[mask == 0] <- NA
+
+data_m <- norms * mask
+
+```
+
+# Imputing missing data
+```{r, echo=T, message=FALSE, warning=FALSE, results='hide'}
+set.seed(123)
+library(mice)
+mice_imputed <- mice(data_m, m = 1, maxit = 5)
+imputed_data <- complete(mice_imputed)
+```
+
+# Calculate rmse
+
+```{r}
+# this function calculate the RMSE
+rmse_loss <- function(ori_data, imputed_data, data_m){
+  
+  #I changed this part becuase I was running into a problem since i already normalized so with the previous code I renormalized, and replaced already exisiting parameters/incorreytly generated new ones
+  
+  # Ensure that the original data and imputed data are already normalized
+  if (is.null(parameters)) {
+    parameters <- parameters_norm(ori_data)  # Calculate parameters only if not provided
+  }
+
+  # Normalize the data if parameters are not passed (initial normalization)
+  ori_data <- normalization(ori_data, parameters)
+  imputed_data <- normalization(imputed_data, parameters)
+
+  
+  
+  # Only for missing values
+  nominator <- sum(((1-data_m) * ori_data - (1-data_m) * imputed_data)**2)
+  denominator <- sum(1-data_m)
+  
+  rmse <- sqrt(nominator/denominator)
+  
+  return(rmse)
+}
+```
+
+```{r}
+# Calculate RMSE
+rmse <- rmse_loss(norms, imputed_data, mask)
+print(paste("RMSE:", rmse))
+
+# retunrs NA so got to change the code of the mask
+
+mask_rmse <- ifelse(is.na(mask), 0, 1)  # Convert NA to 0, keeping valid entries as 1
+
+# Calculate RMSE again
+rmse <- rmse_loss(norms, imputed_data, mask_rmse)
+print(paste("RMSE:", rmse))
+```
+For the same data set (letter) using the same mask used by main_gain() the RMSE is 0.012 when using mice() to impute missing data, whereas RGAIN has a RMSE around 0.18. 
+Now we will compare the results with the generated data
+
+### mice for generated data
+
+```{r} 
+data <- read.csv("gen_data.csv")
+
+# MinMax nomalization
+normalization <- function(data, parameters = NULL) {
+  # If no parameters are provided, calculate min and max for each column
+  if (is.null(parameters)) {
+    min_val <- apply(data, 2, min, na.rm = TRUE)
+    max_val <- apply(data, 2, max, na.rm = TRUE)
+    
+    # Normalize data using min-max formula
+    norm_data <- sweep(data, 2, min_val, "-")
+    norm_data <- sweep(norm_data, 2, max_val - min_val, "/")
+    
+    # Return normalized data and the min/max parameters for future renormalization
+    return(list(norm_data = norm_data, parameters = list(min_val = min_val, max_val = max_val)))
+  } else {
+    min_val <- parameters$min_val
+    max_val <- parameters$max_val
+    
+    # Normalize using pre-calculated min and max values
+    norm_data <- sweep(data, 2, min_val, "-")
+    norm_data <- sweep(norm_data, 2, max_val - min_val, "/")
+    
+    return(norm_data)
+  }
+}
+
+norm_ <- normalization(data)
+norm_data <- norm_$norm_data
+parameters <- norm_$parameters  # parameters is a list, containing min_val and max
+
+norms <- normalization(data, parameters)
+
+```
+
+
+# Introduce missingness
+```{r}
+
+# Introduce missing values by using the same mask generated above
+# Convert 0's in the mask to NA
+mask_g[mask_g ==0] <- NA
+
+data_m <- norms * mask_g
+
+```
+
+# Imputing missing data
+```{r, echo=T, message=FALSE, warning=FALSE, results='hide'}
+set.seed(123)
+library(mice)
+mice_imputedg<- mice(data_m, m = 1, maxit = 5)
+imputed_datag<- complete(mice_imputedg)
+```
+
+
+```{r}
+# Calculate RMSE
+rmse <- rmse_loss(norms, imputed_datag,mask_g)
+print(paste("RMSE:", rmse))
+
+# retunrs NA so got to change the code of the mask
+mask_rmse <- ifelse(is.na(mask_g), 0, 1) # Convert NA to 0, keeping valid entries as 1
+
+# Calculate RMSE again
+rmse <- rmse_loss(norms, imputed_datag,mask_rmse)
+print(paste("RMSE:", rmse))
+```
+Using mice on the generated data set, using the same mask as it was created for the RGAIN, we obtain a RMSE of 0.025, compared to the RMSE obtained using the RGAIN of 0.418
 

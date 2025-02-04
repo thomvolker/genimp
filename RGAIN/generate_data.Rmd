@@ -1,21 +1,24 @@
 ---
-title: "Generate Data"
-author: "laura"
+title: "Mice vs RGAIN"
+author: "Laura Jochim"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: html_document
+bibliography: reference.bib  
 ---
 
 ```{r, echo=FALSE}
 #load packages
 library(dplyr)
 library(MASS)
+library(holodeck)
+library(purrr)
 ```
 
-## Generate Data 
+# Generate Data 
 
-To see how well the RGAIN performs in imputing missing data, I will first generate some simple data that is continous. This data is generated using the mvrnorm function from the package MASS obtaining a multivariate normal dataset. This data set has 4 variables, where the correlations between those variables are defined in `popcor`. 
+To see how well the RGAIN performs in imputing missing data, I will first generate some simple data that is continuous. This data is generated using the mvrnorm function from the package MASS obtaining a multivariate normal dataset. This data set has 4 variables, where the correlations between those variables are defined in `popcor`. 
 
-```{r}
+```{r, echo=FALSE}
 set.seed(11)
 
 popcor <- matrix(nrow = 4, ncol = 4,
@@ -35,20 +38,15 @@ data <- MASS::mvrnorm(n = n_participants, mu = mu, Sigma = popcor) %>%
 
 To save the data frame
 ```{r}
-write.csv(data, file = "C:/Users/laura/Documents/GitHub/genimp/RGAIN/gen_data.csv")
+#write.csv(data, file = "C:/Users/laura/Documents/GitHub/genimp/RGAIN/gen_data.csv")
 ```
 
-Now, to make the data a bit more complex, I also want it to include categorical variables, so that we can also see how well the R implementation of GAIN does when it comes to categorical variables. 
-```{r}
-#laod packages
-library(holodeck)
-library(purrr)
+Now, to make the data a bit more complex, I also want it to include categorical variables, so that we can also see how well the R implementation of GAIN does when it comes to categorical variables. For that I used the sim_cat function from the package holodeck to generate 2 categorical variables adding to the previous data set. One variable has three and the other four categories. 
 
-#create a data set with 4 continuous variables with a correltion of 0.4
-data_2 <- holodeck::sim_covar(n_obs = 2000, n_vars = 4, var = 1, cov = 0.4, name = "x") 
+```{r, echo=F}
 
-#add 2 columns of discrete variables
-data_2 <- data_2 %>% sim_cat( n_groups = 3, name = "cat1") %>% sim_cat( n_groups = 4, name = "cat2")
+#add 2 columns of discrete variables to the previously created data set
+data_2 <- data %>% holodeck::sim_cat( n_groups = 3, name = "cat1") %>% sim_cat( n_groups = 4, name = "cat2")
 
 # so now i have a mixed data set, but the way the categorical variables are distributed is way to simple...
 
@@ -58,16 +56,19 @@ data_2$cat2 <- sample(c("a", "b", "c", "d"), size = 2000, replace = T, prob = c(
 barplot(prop.table(table(data_2$cat2)))
 barplot(prop.table(table(data_2$cat1)))
 
-write.csv(data_2, file = "C:/Users/laura/Documents/GitHub/genimp/RGAIN/gen_catdata.csv")
+#save new data set
+
+#write.csv(data_2, file = "C:/Users/laura/Documents/GitHub/genimp/RGAIN/gen_catdata.csv")
 
 ```
 
-## Imputing data GAIN 
+# Imputing data with RGAIN 
 
-Now we have two data sets, one with 4 multivariate normally distributed variables, and one with two extra added categorical variables. The idea is to look into how the well the GAIN performs in imputing missing data compared to mice. First we see how well GAIN does, the RGAIN code used was written by Paolo Colussi. 
+Now we have two data sets, one with 4 multivariate normally distributed variables, and one with two extra added categorical variables. The idea is to look into how the well the GAIN [@yoonGAINMissingData2018] performs in imputing missing data compared to mice. First we see how well GAIN does, the RGAIN code used was written by Paolo Colussi. The following chunks are the necessary RGAIN functions 
 
 
 ```{r basics}
+#load packages 
 knitr::opts_chunk$set(echo = TRUE)
 
 rm(list = ls())
@@ -81,6 +82,7 @@ library(tensorflow)
 
 
 ```{r}
+#connect to conda environment to use reticulate
 reticulate::use_condaenv("tf-env", required = T)
 
 ```
@@ -439,7 +441,9 @@ main_gain <- function(data, miss_rate = 0.2, batch_size = 128, hint_rate = 0.9, 
 
 ```
 
-Apply the algorithm to the dataset letter, given by the authors of the papers
+## Impute letter data
+
+Apply the algorithm to the dataset letter, given by the authors of the GAIN paper [@yoonGAINMissingData2018]. 
 
 ```{r}
 letter <- read.csv("C:/Users/laura/Documents/GitHub/genimp/mice trial/letter.csv")
@@ -453,7 +457,7 @@ imputed <- main_gain(letter)
 mask<- imputed$mask
 ```
 
-### impute generated data
+## Impute generated data (1)
 ```{r}
 set.seed(123)
 g_data <- read.csv("gen_data.csv")
@@ -465,16 +469,16 @@ mask_g <- imputed_g$mask
 ```
 RMSE of 0.418
 
-### Imputing generated Data (2) 
+## Imputing generated Data (2) 
 ```{r}
 #data with also categorical variables 
 
-c_data <- read.csv("gen_catdata.csv")
+#c_data <- read.csv("gen_catdata.csv")
 
-imputed_gc <- main_gain(c_data)
+#imputed_gc <- main_gain(c_data)
 ```
 
-## Imputing Data Mice
+# Imputing Data with Mice
 
 impute letter data using mice where most of the code is reused from mice_trial
 
@@ -516,7 +520,7 @@ norms <- normalization(data, parameters)
 ```
 
 
-# Introduce missingness
+## Introduce missingness
 ```{r}
 
 # Introduce missing values by using the same mask generated above
@@ -527,7 +531,7 @@ data_m <- norms * mask
 
 ```
 
-# Imputing missing data
+## Imputing missing data
 ```{r, echo=T, message=FALSE, warning=FALSE, results='hide'}
 set.seed(123)
 library(mice)
@@ -535,7 +539,7 @@ mice_imputed <- mice(data_m, m = 1, maxit = 5)
 imputed_data <- complete(mice_imputed)
 ```
 
-# Calculate rmse
+## Calculate rmse
 
 ```{r}
 # this function calculate the RMSE
@@ -580,7 +584,7 @@ print(paste("RMSE:", rmse))
 For the same data set (letter) using the same mask used by main_gain() the RMSE is 0.012 when using mice() to impute missing data, whereas RGAIN has a RMSE around 0.18. 
 Now we will compare the results with the generated data
 
-### mice for generated data
+## mice for generated data
 
 ```{r} 
 data <- read.csv("gen_data.csv")
@@ -619,7 +623,7 @@ norms <- normalization(data, parameters)
 ```
 
 
-# Introduce missingness
+## Introduce missingness
 ```{r}
 
 # Introduce missing values by using the same mask generated above
@@ -630,7 +634,7 @@ data_m <- norms * mask_g
 
 ```
 
-# Imputing missing data
+## Imputing missing data
 ```{r, echo=T, message=FALSE, warning=FALSE, results='hide'}
 set.seed(123)
 library(mice)

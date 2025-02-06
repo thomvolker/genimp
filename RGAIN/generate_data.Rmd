@@ -83,6 +83,7 @@ library(tensorflow)
 
 ```{r}
 #connect to conda environment to use reticulate
+r
 reticulate::use_condaenv("tf-env", required = T)
 
 ```
@@ -491,36 +492,36 @@ Impute letter data using mice [@buurenMiceMultivariateImputation2011] where most
 data_letter <- read.csv("C:/Users/laura/Documents/GitHub/genimp/mice trial/letter.csv")
 
 # MinMax nomalization
-normalization <- function(data, parameters = NULL) {
-  # If no parameters are provided, calculate min and max for each column
-  if (is.null(parameters)) {
-    min_val <- apply(data, 2, min, na.rm = TRUE)
-    max_val <- apply(data, 2, max, na.rm = TRUE)
+#normalization <- function(data, parameters = NULL) {
+#  # If no parameters are provided, calculate min and max for each column
+#  if (is.null(parameters)) {
+#    min_val <- apply(data, 2, min, na.rm = TRUE)
+#    max_val <- apply(data, 2, max, na.rm = TRUE)
     
     # Normalize data using min-max formula
-    norm_data <- sweep(data, 2, min_val, "-")
-    norm_data <- sweep(norm_data, 2, max_val - min_val, "/")
+#    norm_data <- sweep(data, 2, min_val, "-")
+#    norm_data <- sweep(norm_data, 2, max_val - min_val, "/")
     
     # Return normalized data and the min/max parameters for future renormalization
-    return(list(norm_data = norm_data, parameters = list(min_val = min_val, max_val = max_val)))
-  } else {
-    min_val <- parameters$min_val
-    max_val <- parameters$max_val
+#    return(list(norm_data = norm_data, parameters = list(min_val = #min_val, max_val = max_val)))
+#  } else {
+#    min_val <- parameters$min_val
+#    max_val <- parameters$max_val
     
     # Normalize using pre-calculated min and max values
-    norm_data <- sweep(data, 2, min_val, "-")
-    norm_data <- sweep(norm_data, 2, max_val - min_val, "/")
+#    norm_data <- sweep(data, 2, min_val, "-")
+#    norm_data <- sweep(norm_data, 2, max_val - min_val, "/")
     
-    return(norm_data)
-  }
-}
+#    return(norm_data)
+#  }
+#}
 
-norm_l <- normalization(data_letter)
-norm_data_letter <- norm_l$norm_data
-parameters_letter <- norm_l$parameters  # parameters is a list, containing min_val and max
+#norm_l <- normalization(data_letter)
+#norm_data_letter <- norm_l$norm_data
+#parameters_letter <- norm_l$parameters  # parameters is a list, containing min_val and max
 
-norms_letter <- normalization(data_letter, parameters_letter)
-
+#norms_letter <- normalization(data_letter, parameters_letter)
+#
 ```
 
 
@@ -531,7 +532,7 @@ norms_letter <- normalization(data_letter, parameters_letter)
 # Convert 0's in the mask to NA
 mask_letter[mask_letter == 0] <- NA
 
-data_m_letter <- norms_letter * mask_letter
+data_m_letter <- data_letter * mask_letter
 
 ```
 
@@ -547,20 +548,20 @@ imputed_m_letter <- complete(mice_imputed_letter)
 
 ```{r}
 # this function calculate the RMSE
-rmse_loss <- function(ori_data, imputed_data, data_m, parameters = NULL){
+rmse_loss <- function(ori_data, imputed_data, data_m){
   
   #I changed this part becuase I was running into a problem since i already normalized so with the previous code I renormalized, and replaced already exisiting parameters/incorrectly generated new ones
   
   # Ensure that the original data and imputed data are already normalized
-  if (is.null(parameters)) {
-    norm_result <- normalization(ori_data)
-    parameters <- norm_result$parameters
-  }
+#  if (is.null(parameters)) {
+#    norm_result <- normalization(ori_data)
+#    parameters <- norm_result$parameters
+#  }
   # Calculate parameters only if not provided
   
   # Normalize the data if parameters are not passed (initial normalization)
-  ori_data <- normalization(ori_data, parameters)
-  imputed_data <- normalization(imputed_data, parameters)
+#  ori_data <- normalization(ori_data, parameters)
+#  imputed_data <- normalization(imputed_data, parameters)
 
   
   
@@ -580,7 +581,7 @@ rmse_loss <- function(ori_data, imputed_data, data_m, parameters = NULL){
 mask_rmse_letter <- ifelse(is.na(mask_letter), 0, 1)  # Convert NA to 0, keeping valid entries as 1
 
 # Calculate RMSE again
-rmse_letter <- rmse_loss(norms_letter, imputed_m_letter, mask_rmse_letter, parameters_letter)
+rmse_letter <- rmse_loss(data_letter, imputed_m_letter, mask_rmse_letter)
 print(paste("RMSE:", rmse_letter))
 ```
 For the same data set (letter) using the same mask used by main_gain() the RMSE is 0.012 when using mice() to impute missing data, whereas RGAIN has a RMSE around 0.18. In this example, mice is outperforming RGAIN 
@@ -592,11 +593,11 @@ Now we will compare the results with the generated data.
 gen_data <- read.csv("gen_data.csv")
 
 
-norm_g <- normalization(gen_data)
-norm_gen <- norm_g$norm_data
-parameters_gen <- norm_g$parameters  # parameters is a list, containing min_val and max
+#norm_g <- normalization(gen_data)
+#norm_gen <- norm_g$norm_data
+#parameters_gen <- norm_g$parameters  # parameters is a list, containing min_val and max
 
-norms_gen <- normalization(gen_data, parameters_gen)
+#norms_gen <- normalization(gen_data, parameters_gen)
 
 ```
 
@@ -608,7 +609,7 @@ norms_gen <- normalization(gen_data, parameters_gen)
 # Convert 0's in the mask to NA
 mask_gen[mask_gen ==0] <- NA
 
-data_m_gen <- norms_gen * mask_gen
+data_m_gen <- gen_data * mask_gen
 
 ```
 
@@ -624,9 +625,9 @@ imputed_data_gen<- complete(mice_imputed_gen)
 ```{r}
 # Calculate RMSE
 mask_rmse_gen <- ifelse(is.na(mask_gen), 0, 1) # Convert NA to 0, keeping valid entries as 1
-
+ 
 # Calculate RMSE again
-rmse_gen <- rmse_loss(norms_gen, imputed_data_gen, mask_rmse_gen, parameters_gen)
+rmse_gen <- rmse_loss(gen_data, imputed_data_gen, mask_rmse_gen)
 print(paste("RMSE:", rmse_gen))
 ```
 Using mice on the generated data set, using the same mask as it was created for the RGAIN, we obtain a RMSE of 0.025, compared to the RMSE obtained using the RGAIN of 0.418.\

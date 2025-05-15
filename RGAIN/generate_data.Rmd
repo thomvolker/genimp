@@ -1,0 +1,637 @@
+---
+title: "Mice vs RGAIN"
+author: "Laura Jochim"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+bibliography: reference.bib  
+---
+
+```{r, message=FALSE, warning=FALSE}
+#load packages
+library(dplyr)
+library(MASS)
+library(holodeck)
+library(purrr)
+```
+
+# Generate Data 
+
+To see how well the RGAIN performs in imputing missing data, I will first generate some simple data that is continuous. This data is generated using the mvrnorm function from the package MASS obtaining a multivariate normal dataset. This data set has 4 variables, where the correlations between those variables are defined in `popcor`. 
+
+```{r}
+set.seed(11)
+
+popcor <- matrix(nrow = 4, ncol = 4,
+                 c(1, 0.5, 0.3, 0.1,
+                   0.5, 1, 0.5, 0.3,
+                   0.3, 0.5, 1, 0.5,
+                   0.1, 0.3, 0.5, 1))
+mu <- c(0, 0, 0, 0)
+n_datasets <- 100
+n_participants <- 2000
+ 
+data <- MASS::mvrnorm(n = n_participants, mu = mu, Sigma = popcor) %>% 
+                       as_tibble() %>% # make into a tibble
+                       rename(x1 = V1, x2 = V2, x3 = V3, x4 = V4) # rename columns
+                       
+```
+
+To save the data frame
+```{r}
+#write.csv(data, file = "C:/Users/laura/Documents/GitHub/genimp/RGAIN/gen_data.csv")
+```
+
+Now, to make the data a bit more complex, I also want it to include categorical variables, so that we can also see how well the R implementation of GAIN does when it comes to categorical variables. For that I used the sim_cat function from the package holodeck to generate 2 categorical variables adding to the previous data set. One variable has three and the other four categories. 
+
+```{r, echo=F}
+
+#add 2 columns of discrete variables to the previously created data set
+data_2 <- data %>% holodeck::sim_cat( n_groups = 3, name = "cat1") %>% sim_cat( n_groups = 4, name = "cat2")
+
+# so now i have a mixed data set, but the way the categorical variables are distributed is way to simple...
+
+data_2$cat1 <- sample(c("a", "b", "c"), size = 2000, replace = T, prob = c(0.4, 0.3, .05))
+data_2$cat2 <- sample(c("a", "b", "c", "d"), size = 2000, replace = T, prob = c(0.1, 0.6, 0.2, 0.5))
+
+barplot(prop.table(table(data_2$cat2)), xlab = "Categories")
+barplot(prop.table(table(data_2$cat1)), xlab = "Categories")
+
+#save new data set
+
+#write.csv(data_2, file = "C:/Users/laura/Documents/GitHub/genimp/RGAIN/gen_catdata.csv")
+
+```
+
+# Imputing data with RGAIN 
+
+Now we have two data sets, one with 4 multivariate normally distributed variables, and one with two extra added categorical variables. The idea is to look into how the well the GAIN [@yoonGAINMissingData2018] performs in imputing missing data compared to mice. First we see how well GAIN does, the RGAIN code used was written by Paolo Colussi. The following chunks are the necessary RGAIN functions 
+
+
+```{r basics, message=FALSE, warning=FALSE}
+#load packages 
+knitr::opts_chunk$set(echo = TRUE)
+
+rm(list = ls())
+library(reticulate)
+library(tidyverse)
+library(readr)
+library(keras)
+library(tcltk)
+library(tensorflow)
+```
+
+
+```{r}
+#connect to conda environment to use reticulate
+r
+reticulate::use_condaenv("tf-env", required = T)
+
+```
+
+This chunk contains a set of utility functions that perform essential preprocessing and evaluation tasks for the GAIN algorithm. Below is an overview of their roles:
+
+1. missing: Creates a mask matrix to simulate missing data.
+2. parameters_norm: Computes min-max normalization parameters (minimum and maximum values for each column).
+3. normalization: Normalizes the dataset using min-max scaling to ensure values lie between 0 and 1.
+4. renormalization: Reverses the normalization process to restore the original data scale.
+5. rmse_loss: Calculates RMSE for missing values by comparing original and imputed data.
+6. hint_matrix: Generates a hint matrix, aiding the GAN discriminator in learning about observed and missing data.
+7. rounding: Adjusts imputed values in categorical columns to maintain their discrete nature.
+
+```{r utilities}
+# This function generates a mask for introducing missing values into a dataset.
+# Parameters:
+# - p: Probability of a value being missing.
+# - no: Number of rows in the generated matrix.
+# - dim: Number of columns in the generated matrix.
+missig <- function(p, no, dim) {
+  # Create a matrix of random numbers between 0 and 1 with specified dimensions.
+  unif_matrix <- matrix(runif(no * dim), no, dim)
+  # Generate a mask where values are 1 with probability 'p', otherwise NA.
+  mask <- ifelse((unif_matrix < p), 1, NA)
+  return(mask)
+}
+
+
+# This function calculates the minimum and maximum values of each column in a dataset.
+# Used to generate parameters for normalizing the data.
+# Parameters:
+# - data: Input matrix or dataframe.
+parameters_norm <- function(data) {
+  # Calculate the minimum of each column, ignoring NA values.
+  min <- apply(data, 2, function(x) min(x, na.rm = TRUE))
+  # Calculate the maximum of each column, ignoring NA values.
+  max <- apply(data, 2, function(x) max(x, na.rm = TRUE))
+  
+  # Combine minimum and maximum values into a matrix with two columns.
+  parameters <- cbind(min, max)
+  return(parameters)
+}
+
+
+# This function normalizes the data using min-max normalization.
+# Parameters:
+# - data: Input matrix or dataframe to be normalized.
+# - parameters: Matrix with min and max values for each column (from parameters_norm).
+normalization <- function(data, parameters) {
+  # Subtract the minimum value from each element (column-wise).
+  data_norm <- sweep(data, 2, parameters[, 1], "-")
+  # Divide by the range (maximum - minimum) for each column.
+  data_norm <- sweep(data_norm, 2, parameters[, 2], "/")
+  
+  return(data_norm)
+}
+
+# This function renormalizes the data, converting normalized values back to their original scale.
+# Parameters:
+# - data: Normalized data matrix or dataframe.
+# - parameters: Matrix with min and max values for each column (from parameters_norm).
+renormalization <- function(data, parameters) {
+  # Multiply normalized values by the range (column-wise).
+  data_renorm <- sweep(data, 2, parameters[, 2], "*")
+  # Add the minimum value to each element (column-wise).
+  data_renorm <- sweep(data_renorm, 2, parameters[, 1], "+")
+  
+  return(data_renorm)
+}
+
+
+# This function calculates the RMSE between the original
+# data and imputed data, focusing only on the missing values.
+# Parameters:
+# - ori_data: Original dataset (with no missing values).
+# - imputed_data: Dataset after imputation of missing values.
+# - data_m: Mask matrix indicating missing values (1 for observed, NA for missing).
+rmse_loss <- function(ori_data, imputed_data, data_m) {
+  # Normalize the original and imputed datasets.
+  parameters <- parameters_norm(ori_data)
+  ori_data <- normalization(ori_data, parameters)
+  imputed_data <- normalization(imputed_data, parameters)
+  
+  # Replace NA values in the mask with 0.
+  data_m <- as.data.frame(data_m) %>% 
+    mutate(across(everything(), ~replace_na(., 0)))
+  
+  # Calculate the squared differences, focusing only on missing entries.
+  nominator <- sum(((1 - data_m) * ori_data - (1 - data_m) * imputed_data)**2)
+  denominator <- sum(1 - data_m)  # Number of missing values.
+  
+  # Compute the RMSE value.
+  rmse <- sqrt(nominator / denominator)
+  
+  return(rmse)
+}
+
+
+# This function generates a "hint matrix," typically used in data imputation algorithms.
+# The matrix is binary, indicating whether a value is included in the hint.
+# Parameters:
+# - hint_rate: Probability of including a value in the hint.
+# - no: Number of rows in the generated matrix.
+# - dim: Number of columns in the generated matrix.
+hint_matrix <- function(hint_rate, no, dim) {
+  # Create a probability matrix of random numbers between 0 and 1.
+  prob_matrix <- matrix(runif(no * dim), no, dim)
+  # Generate a binary hint matrix based on the hint rate.
+  hint <- ifelse((prob_matrix < hint_rate), 1, 0)
+  return(hint)
+}
+
+# This function rounds imputed data for columns with fewer than 20 unique values.
+# This is useful for categorical data that may have been normalized.
+# Parameters:
+# - imp_data: Imputed dataset.
+# - or_data: Original dataset (to check the number of unique values in each column).
+rounding <- function(imp_data, or_data) {
+  for (i in 1:ncol(or_data)) {
+    # Check if the column has fewer than 20 unique values.
+    if (length(unique(or_data[, i])) < 20) {
+      # Round the values in the imputed dataset for this column.
+      imp_data[, i] <- round(imp_data[, i])
+    }
+  }
+  return(imp_data)
+}
+
+```
+
+This section defines the GAIN algorithm. It includes the generator and discriminator architectures, their loss functions, and the training process.
+
+```{r}
+
+gain <- function(data, batch_size, hint_rate, alpha, iterations,learning) {
+  
+  # Define the loss function for the discriminator (D)
+  D_loss <- function(y_true, y_pred) {
+    M <- y_true[[1]]  # True mask matrix
+    loss <- -k_mean(M * k_log(y_pred + 1e-8) + (1 - M) * k_log(1 - y_pred + 1e-8))
+    return(loss)
+  }
+
+  # Define the loss function for the generator (G)
+  # This consists of two parts:
+  # - G_loss_temp: Encourages fooling the discriminator for missing values.
+  # - MSE_loss: Enforces data consistency for observed values.
+  G_loss <- function(y_true, y_pred) {
+    M <- y_true[[1]]  # Mask matrix
+    D_prob <- y_true[[2]]  # Output probabilities from the discriminator
+    G_sample <- y_pred  # Generated data sample
+    
+    # Loss term for fooling the discriminator
+    G_loss_temp <- -k_mean((1 - M) * k_log(D_prob + 1e-8))
+    # Mean squared error (MSE) for observed data
+    MSE_loss <- k_mean((M * X_mb - M * y_pred)^2) / k_mean(M)
+    # Total generator loss
+    G_loss <- G_loss_temp + alpha * MSE_loss
+    return(G_loss)
+  }
+  
+  # Generate the mask matrix indicating observed (1) and missing (0) values
+  data_m <- 1 - is.na(data)
+  
+  # Store the dimensions of the data
+  no <- nrow(data)
+  dim <- ncol(data)
+  
+  # Normalize the data using min-max normalization
+  norm_parameters <- parameters_norm(data)
+  norm_data <- normalization(data, norm_parameters) %>% 
+    mutate(across(everything(), ~replace_na(., 0)))  # Replace NA with 0
+  
+  # Define the input layers for the GAN
+  X <- layer_input(shape = c(dim))  # Data vector (input)
+  M <- layer_input(shape = c(dim))  # Mask vector (observed/missing indicator)
+  H <- layer_input(shape = c(dim))  # Hint vector (used to train discriminator)
+  
+  # Define the discriminator architecture
+  inputs_D <- layer_concatenate(list(X, H))  # Combine data and hint vector
+  
+  D_output <- inputs_D %>%
+    layer_dense(units = dim, activation = "relu",
+                kernel_initializer = initializer_he_normal()) %>%
+    layer_dense(units = dim, activation = "relu",
+                kernel_initializer = initializer_he_normal()) %>%
+    layer_dense(units = dim, activation = "sigmoid",  # Sigmoid for binary output
+                kernel_initializer = initializer_he_normal())
+  
+  # Define the generator architecture
+  inputs_G <- layer_concatenate(list(X, M))  # Combine data and mask vector
+  
+  G_output <- inputs_G %>%
+    layer_dense(units = dim, activation = "relu",
+                kernel_initializer = initializer_he_normal()) %>%
+    layer_dense(units = dim, activation = "relu",
+                kernel_initializer = initializer_he_normal()) %>%
+    layer_dense(units = dim, activation = "sigmoid",  # Sigmoid for normalized output
+                kernel_initializer = initializer_he_normal())
+  
+  # Create the discriminator and generator models
+  discriminator <- keras_model(inputs = list(X, H), outputs = D_output)
+  generator <- keras_model(inputs = list(X, M), outputs = G_output)
+  
+  # Compile the models with their respective loss functions
+  discriminator %>% compile(optimizer = optimizer_adam(learning_rate = learning), loss = D_loss)
+  generator %>% compile(optimizer = optimizer_adam(learning_rate = learning), loss = G_loss)
+  
+  # Initialize a progress bar for training
+  pb <- tkProgressBar(title = "Progress", min = 0, max = iterations, width = 300)
+
+
+  # See below
+   D_loss_values <- c()
+   G_loss_values <- c()
+
+  
+    
+  # Training loop for the GAN
+  for (i in 1:iterations) {
+    # Sample a batch of data
+    batch_idx <- sample(1:no, batch_size)
+    X_mb <- as.matrix(norm_data[batch_idx, ])  # Batch of normalized data
+    M_mb <- data_m[batch_idx, ]  # Corresponding mask for the batch
+    
+    # Generate random noise and hint matrix for the batch
+    Z_mb <- runif(batch_size * dim, min = 0, max = 0.01) %>% matrix(nrow = batch_size, ncol = dim)
+    H_mb_temp <- hint_matrix(hint_rate, batch_size, dim)
+    H_mb <- M_mb * H_mb_temp  + 0.5*(1 - H_mb_temp) 
+    
+    # Combine observed data with random noise for missing values
+    X_mb <- M_mb * X_mb + (1 - M_mb) * Z_mb
+    
+    # Generate data using the generator
+    G_sample <- generator %>% predict(list(X_mb, M_mb), verbose=0)
+    
+    # Combine real and generated data
+    Hat_X <- X_mb * M_mb + G_sample * (1 - M_mb)
+    
+    # Generate discriminator probabilities
+    D_prob <- discriminator %>% predict(list(Hat_X, H_mb), verbose=0)
+    
+    # Train the discriminator on real and generated data
+    D_loss_value <- discriminator %>% train_on_batch(list(X_mb, H_mb), M_mb)
+    
+    # Train the generator to improve its performance
+    G_loss_value <- generator %>% train_on_batch(list(X_mb, M_mb), list(M_mb, D_prob))
+    
+    # # Add losses to the list for monitoring
+     D_loss_values <- c(D_loss_values, D_loss_value)
+     G_loss_values <- c(G_loss_values, G_loss_value)
+   
+    
+    
+    # Update the progress bar
+     if (i %% 100 == 0) cat("\rIteration", i,"\tGloss", G_loss_value, "\tDloss", D_loss_value)
+    setTkProgressBar(pb, i, label = sprintf("Progress: %d%%", round(i / iterations * 100)))
+  }
+  
+  # Close the progress bar after training
+  close(pb)
+  
+  # Generate final imputed data
+  Z_mb <- matrix(runif(no * dim, min = 0, max = 0.01), nrow = no, ncol = dim)
+  X_mb <- data_m * norm_data + (1 - data_m) * Z_mb
+  imputed_data <- generator %>% predict(list(as.matrix(X_mb), data_m), verbose=0)
+  
+  # Combine observed and generated data for the final result
+  imputed_data <- data_m * norm_data + (1 - data_m) * imputed_data
+  
+  # Renormalize the imputed data to the original scale and round if necessary
+  imputed_data <- renormalization(imputed_data, norm_parameters) %>%
+    rounding(data)
+  
+  imputed <- list(data = imputed_data,
+                  D_loss = D_loss_values,
+                  G_loss = G_loss_values
+                  )
+  # Return the imputed dataset
+  return(imputed)
+}
+
+```
+
+This chunk defines the main function that:
+
+* Introduces missing values into the dataset based on a specified missing rate.
+* Applies the GAIN algorithm to impute missing values.
+* Calculates and prints the RMSE.
+
+```{r}
+
+main_gain <- function(data, miss_rate = 0.2, batch_size = 128, hint_rate = 0.9, alpha = 100, iterations = 1000, learning = 0.001) {
+  # Parameters:
+  # data: The original dataset to process.
+  # miss_rate: Proportion of missing values to introduce (default 20%).
+  # batch_size: Number of samples in each training batch for the GAN.
+  # hint_rate: Proportion of observed values used as hints for the discriminator.
+  # alpha: Hyperparameter controlling the trade-off between adversarial loss and MSE loss in the generator.
+  # iterations: Number of training iterations for the GAIN algorithm.
+  
+  # Get the number of rows and columns in the input dataset
+  no <- nrow(data)  # Number of rows (observations)
+  dim <- ncol(data) # Number of columns (features)
+  
+  # Create a mask matrix indicating observed and missing values
+  # `missig` generates a matrix where each value is 1 (observed) with probability (1 - miss_rate),
+  # and NA (missing) with probability `miss_rate`.
+  mask <- missig(1 - miss_rate, no, dim)
+  
+  # Apply the mask to the original data to create a version with missing values
+  # Observed values remain intact, while missing entries are set to NA.
+  data_missing <- mask * data
+  
+  # Impute the missing values using the GAIN algorithm
+  # This uses the `gain` function with the specified parameters.
+  imputed <- gain(data_missing, batch_size, hint_rate, alpha, iterations,learning)
+  
+  # Compute the RMSE between the original and imputed data
+  # RMSE is calculated only for the missing entries.
+  rmse <- rmse_loss(data, imputed$data, mask)
+  
+  # Print the RMSE 
+  cat("\n RMSE:",rmse)
+  
+  # Prepare the data for plotting the convergence of the GAN losses
+  # - `iteration`: A sequence of iteration numbers from 1 to `iterations`.
+  # - `G_loss`: Generator loss values (from the GAIN algorithm).
+  # - `D_loss`: Discriminator loss values (from the GAIN algorithm).
+  plot_data <- data.frame(
+    iteration = 1:iterations, 
+    G_loss = imputed$G_loss,
+    D_loss = imputed$D_loss
+  )
+
+  # Plot the losses of the Generator and Discriminator over iterations
+  plot <- ggplot(plot_data, aes(x = iteration)) +
+    geom_line(aes(y = G_loss, color = "Generator Loss")) + # Plot the generator loss
+    geom_line(aes(y = D_loss, color = "Discriminator Loss")) + # Plot the discriminator loss
+    labs(
+      title = "GAIN loss convergence", # Title of the plot
+      x = "Iterations", # Label for x-axis
+      y = "Loss", # Label for y-axis
+      color = "Legend" # Legend title
+    ) +
+    theme_minimal()
+  
+  #Print the plot
+  print(plot)
+  
+  # Return the imputed dataset 
+  return(list(imputed_data=imputed$data, mask=mask))
+}
+
+
+```
+
+## Impute letter data
+
+Apply the algorithm to the dataset letter, given by the authors of the GAIN paper [@yoonGAINMissingData2018]. 
+
+```{r}
+letter <- read.csv("C:/Users/laura/Documents/GitHub/genimp/mice trial/letter.csv")
+
+set.seed(123)
+# Impute missing values in the dataset using the GAIN algorithm
+imputed_letter <- main_gain(letter)
+
+#it took around 5 min to run this for 1000 iterations. The resulting RMSE is 0.180
+
+#save the mask for the mice imputation
+mask_letter<- imputed_letter$mask
+```
+RMSE of 0.180
+
+## Impute generated data (1)
+```{r}
+set.seed(123)
+g_data <- read.csv("gen_data.csv")
+
+imputed_gen <- main_gain(g_data)
+
+#save the mask for the mice imputation
+mask_gen <- imputed_gen$mask
+```
+RMSE of 0.418
+
+## Imputing generated Data (2) 
+
+I could not make the data set with the categorical varibales run yet...
+```{r}
+#data with also categorical variables 
+
+#c_data <- read.csv("gen_catdata.csv")
+
+#imputed_gc <- main_gain(c_data)
+```
+
+# Imputing Data with Mice
+
+Impute letter data using mice [@buurenMiceMultivariateImputation2011] where most of the code is reused from mice_trial.Rmd. 
+
+
+```{r} 
+data_letter <- read.csv("C:/Users/laura/Documents/GitHub/genimp/mice trial/letter.csv")
+
+# MinMax nomalization
+#normalization <- function(data, parameters = NULL) {
+#  # If no parameters are provided, calculate min and max for each column
+#  if (is.null(parameters)) {
+#    min_val <- apply(data, 2, min, na.rm = TRUE)
+#    max_val <- apply(data, 2, max, na.rm = TRUE)
+    
+    # Normalize data using min-max formula
+#    norm_data <- sweep(data, 2, min_val, "-")
+#    norm_data <- sweep(norm_data, 2, max_val - min_val, "/")
+    
+    # Return normalized data and the min/max parameters for future renormalization
+#    return(list(norm_data = norm_data, parameters = list(min_val = #min_val, max_val = max_val)))
+#  } else {
+#    min_val <- parameters$min_val
+#    max_val <- parameters$max_val
+    
+    # Normalize using pre-calculated min and max values
+#    norm_data <- sweep(data, 2, min_val, "-")
+#    norm_data <- sweep(norm_data, 2, max_val - min_val, "/")
+    
+#    return(norm_data)
+#  }
+#}
+
+#norm_l <- normalization(data_letter)
+#norm_data_letter <- norm_l$norm_data
+#parameters_letter <- norm_l$parameters  # parameters is a list, containing min_val and max
+
+#norms_letter <- normalization(data_letter, parameters_letter)
+#
+```
+
+
+## Introduce missingness
+```{r}
+
+# Introduce missing values by using the same mask generated above
+# Convert 0's in the mask to NA
+mask_letter[mask_letter == 0] <- NA
+
+data_m_letter <- data_letter * mask_letter
+
+```
+
+## Imputing missing data
+```{r, echo=T, message=FALSE, warning=FALSE, results='hide'}
+set.seed(123)
+library(mice)
+mice_imputed_letter <- mice(data_m_letter, m = 1, maxit = 5)
+imputed_m_letter <- complete(mice_imputed_letter)
+```
+
+## Calculate rmse
+
+```{r}
+# this function calculate the RMSE
+rmse_loss <- function(ori_data, imputed_data, data_m){
+  
+  #I changed this part becuase I was running into a problem since i already normalized so with the previous code I renormalized, and replaced already exisiting parameters/incorrectly generated new ones
+  
+  # Ensure that the original data and imputed data are already normalized
+#  if (is.null(parameters)) {
+#    norm_result <- normalization(ori_data)
+#    parameters <- norm_result$parameters
+#  }
+  # Calculate parameters only if not provided
+  
+  # Normalize the data if parameters are not passed (initial normalization)
+#  ori_data <- normalization(ori_data, parameters)
+#  imputed_data <- normalization(imputed_data, parameters)
+
+  
+  
+  # Only for missing values
+  nominator <- sum(((1-data_m) * ori_data - (1-data_m) * imputed_data)**2)
+  denominator <- sum(1-data_m)
+  
+  rmse <- sqrt(nominator/denominator)
+  
+  return(rmse)
+}
+```
+
+```{r}
+# Calculate RMSE
+
+mask_rmse_letter <- ifelse(is.na(mask_letter), 0, 1)  # Convert NA to 0, keeping valid entries as 1
+
+# Calculate RMSE again
+rmse_letter <- rmse_loss(data_letter, imputed_m_letter, mask_rmse_letter)
+print(paste("RMSE:", rmse_letter))
+```
+For the same data set (letter) using the same mask used by main_gain() the RMSE is 0.012 when using mice() to impute missing data, whereas RGAIN has a RMSE around 0.18. In this example, mice is outperforming RGAIN 
+Now we will compare the results with the generated data.
+
+## mice for generated data
+
+```{r} 
+gen_data <- read.csv("gen_data.csv")
+
+
+#norm_g <- normalization(gen_data)
+#norm_gen <- norm_g$norm_data
+#parameters_gen <- norm_g$parameters  # parameters is a list, containing min_val and max
+
+#norms_gen <- normalization(gen_data, parameters_gen)
+
+```
+
+
+## Introduce missingness
+```{r}
+
+# Introduce missing values by using the same mask generated above
+# Convert 0's in the mask to NA
+mask_gen[mask_gen ==0] <- NA
+
+data_m_gen <- gen_data * mask_gen
+
+```
+
+## Imputing missing data
+```{r, echo=T, message=FALSE, warning=FALSE, results='hide'}
+set.seed(123)
+
+mice_imputed_gen<- mice(data_m_gen, m = 1, maxit = 5)
+imputed_data_gen<- complete(mice_imputed_gen)
+```
+
+
+```{r}
+# Calculate RMSE
+mask_rmse_gen <- ifelse(is.na(mask_gen), 0, 1) # Convert NA to 0, keeping valid entries as 1
+ 
+# Calculate RMSE again
+rmse_gen <- rmse_loss(gen_data, imputed_data_gen, mask_rmse_gen)
+print(paste("RMSE:", rmse_gen))
+```
+Using mice on the generated data set, using the same mask as it was created for the RGAIN, we obtain a RMSE of 0.025, compared to the RMSE obtained using the RGAIN of 0.418.\
+Looking at the results, where we compared the performance of mice and RGAIN, we can see that MICE is outperforming RGAIN on both data sets (generated data and letter data) when using the RMSE to evaluate imputation performance. An alternative way to evaluate would be by comparing the distributions of the original and the imputed data (there are a few more). It is also of interest to make the RGAIN work with categorical data, and try that out. Additionally, I want to scavenger the internet to find a large data set that I can also use to compare MICE with RGAIN:)  
+
+\pagebreak
+# References

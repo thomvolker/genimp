@@ -33,7 +33,7 @@ jobs:
       - name: Build with Jekyll
         uses: actions/jekyll-build-pages@v1
         with:
-          source: ./minigan_example
+          source: ./minigan_example/minigan_complete_data.html
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
 
